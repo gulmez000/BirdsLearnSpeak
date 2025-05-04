@@ -5,111 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kuş Seslendirme Uygulaması</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        h1 {
-            text-align: center;
-            color: #2c3e50;
-        }
-        .container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .record-section, .playlist-section {
-            margin-bottom: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        button {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            margin: 5px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        button:hover {
-            background-color: #2980b9;
-        }
-        button:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-        }
-        button.record {
-            background-color: #e74c3c;
-        }
-        button.record:hover {
-            background-color: #c0392b;
-        }
-        button.play {
-            background-color: #2ecc71;
-        }
-        button.play:hover {
-            background-color: #27ae60;
-        }
-        .audio-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-            padding: 10px;
-            background-color: #f9f9f9;
-            border-radius: 5px;
-        }
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        input[type="number"] {
-            width: 60px;
-            padding: 5px;
-            margin: 0 5px;
-        }
-        .status {
-            margin-top: 20px;
-            padding: 10px;
-            border-radius: 5px;
-            text-align: center;
-            font-weight: bold;
-        }
-        .audio-label {
-            width: 100px;
-            margin-right: 10px;
-            font-weight: bold;
-        }
-        .sequence-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 5px;
-        }
-        #playlist {
-            margin-top: 10px;
-            padding: 10px;
-            border: 1px dashed #ccc;
-            border-radius: 5px;
-        }
-        .delete-btn {
-            background-color: #e74c3c;
-            margin-left: 10px;
-        }
-        .status.playing {
-            background-color: #d5f5e3;
-            color: #27ae60;
-        }
-        .status.stopped {
-            background-color: #fadbd8;
-            color: #e74c3c;
-        }
+        /* Stil kısmı */
     </style>
 </head>
 <body>
@@ -118,148 +14,92 @@
         
         <div class="record-section">
             <h2>Ses Dosyası Seç</h2>
-            <div class="controls">
-                <input type="file" id="audio-file" accept="audio/*">
-                <span id="audio-status"></span>
-            </div>
+            <input type="file" id="audio-file" accept="audio/*">
+            <span id="audio-status"></span>
         </div>
         
         <div class="playlist-section">
             <h2>Çalma Listesi</h2>
-            <div id="playlist-controls">
-                <div class="sequence-item">
-                    <input type="number" id="duration" min="1" max="60" value="5" placeholder="Dk">
-                    <span>dakika</span>
-                    <button id="add-to-playlist">Listeye Ekle</button>
-                </div>
-                <div class="sequence-item">
-                    <span>Sessiz süre: </span>
-                    <input type="number" id="silence-duration" min="0" max="120" value="30" placeholder="Dk">
-                    <span>dakika</span>
-                    <button id="add-silence">Sessizlik Ekle</button>
-                </div>
-                <div class="sequence-item">
-                    <span>Toplam tekrar sayısı: </span>
-                    <input type="number" id="repeat-count" min="1" max="100" value="7">
-                    <button id="start-sequence" class="play">Çalmayı Başlat</button>
-                    <button id="stop-sequence">Durdur</button>
-                </div>
-            </div>
-            
-            <h3>Çalma Sırası:</h3>
             <div id="playlist"></div>
-            
-            <div id="player-status" class="status stopped">Hazır</div>
+            <div id="player-status" class="status">Hazır</div>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             let audioFile = null;
-            let playlist = [];
+            let audio = new Audio();
             let isPlaying = false;
-            let currentAudioIndex = 0;
-            let repetitionCount = 0;
-            let currentAudio = null;
-            let silenceTimeout = null;
-
-            const audioFileInput = document.getElementById('audio-file');
-            const addToPlaylistButton = document.getElementById('add-to-playlist');
-            const addSilenceButton = document.getElementById('add-silence');
-            const startSequenceButton = document.getElementById('start-sequence');
-            const stopSequenceButton = document.getElementById('stop-sequence');
-            const playlistContainer = document.getElementById('playlist');
-            const playerStatus = document.getElementById('player-status');
-            const durationInput = document.getElementById('duration');
-            const silenceDurationInput = document.getElementById('silence-duration');
-            const repeatCountInput = document.getElementById('repeat-count');
-            const audioStatus = document.getElementById('audio-status');
+            let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            let analyser = audioContext.createAnalyser();
+            let microphoneStream = null;
+            let audioFileInput = document.getElementById('audio-file');
+            let audioStatus = document.getElementById('audio-status');
+            let playerStatus = document.getElementById('player-status');
 
             // Ses dosyasını yükle
             audioFileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('audio/')) {
                     audioFile = URL.createObjectURL(file);
+                    audio.src = audioFile;
                     audioStatus.textContent = `Dosya yüklendi: ${file.name}`;
                 } else {
                     audioStatus.textContent = 'Geçersiz dosya türü!';
                 }
             });
 
-            // Çalma listesine ses dosyasını ekle
-            addToPlaylistButton.addEventListener('click', () => {
-                if (audioFile) {
-                    const duration = parseInt(durationInput.value) * 60 * 1000; // Dakika -> ms
-                    playlist.push({
-                        type: 'sound',
-                        audio: new Audio(audioFile),
-                        duration: duration
+            // Mikrofonu başlat
+            function startMicrophone() {
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then((stream) => {
+                        microphoneStream = stream;
+                        let source = audioContext.createMediaStreamSource(stream);
+                        source.connect(analyser);
+                        analyser.fftSize = 256;
+                        let bufferLength = analyser.frequencyBinCount;
+                        let dataArray = new Uint8Array(bufferLength);
+                        detectSound(dataArray);
+                    })
+                    .catch((error) => {
+                        console.error('Mikrofon hatası: ', error);
                     });
-                    updatePlaylist();
-                }
-            });
-
-            // Sessizlik ekle
-            addSilenceButton.addEventListener('click', () => {
-                const silenceDuration = parseInt(silenceDurationInput.value) * 60 * 1000; // Dakika -> ms
-                playlist.push({
-                    type: 'silence',
-                    duration: silenceDuration
-                });
-                updatePlaylist();
-            });
-
-            // Çalma sırasını güncelle
-            function updatePlaylist() {
-                playlistContainer.innerHTML = '';
-                playlist.forEach((item, index) => {
-                    const div = document.createElement('div');
-                    div.textContent = item.type === 'sound' ? `Ses: ${item.audio.src}` : `Sessizlik: ${item.duration / 60000} dk`;
-                    playlistContainer.appendChild(div);
-                });
             }
 
-            // Çalmayı başlat
-            startSequenceButton.addEventListener('click', () => {
-                if (isPlaying) return;
-                isPlaying = true;
-                repetitionCount = parseInt(repeatCountInput.value);
-                playNext();
-            });
+            // Ses seviyesi algılama
+            function detectSound(dataArray) {
+                analyser.getByteFrequencyData(dataArray);
 
-            // Çalmayı durdur
-            stopSequenceButton.addEventListener('click', () => {
-                isPlaying = false;
-                playerStatus.textContent = 'Hazır';
-            });
+                // Eşik değerini kontrol et (örneğin, 100)
+                let totalVolume = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                    totalVolume += dataArray[i];
+                }
+                let averageVolume = totalVolume / dataArray.length;
 
-            // Ses çalma ve sessiz geçiş
-            function playNext() {
-                if (currentAudioIndex >= playlist.length || repetitionCount <= 0) {
-                    playerStatus.textContent = 'Çalma bitti';
-                    return;
+                if (averageVolume > 100 && !isPlaying) { // Ses eşik değeri
+                    playSound();
                 }
 
-                const item = playlist[currentAudioIndex];
-                currentAudioIndex++;
+                // Ses seviyesini her 100ms'de bir kontrol et
+                requestAnimationFrame(() => detectSound(dataArray));
+            }
 
-                if (item.type === 'sound') {
+            // Ses dosyasını çalma
+            function playSound() {
+                if (audioFile && !isPlaying) {
+                    isPlaying = true;
                     playerStatus.textContent = 'Çalıyor...';
-                    item.audio.play();
-                    item.audio.onended = () => {
-                        setTimeout(() => {
-                            repetitionCount--;
-                            playNext();
-                        }, item.duration);
+                    audio.play();
+                    audio.onended = () => {
+                        isPlaying = false;
+                        playerStatus.textContent = 'Hazır';
                     };
-                } else if (item.type === 'silence') {
-                    playerStatus.textContent = 'Sessizlik...';
-                    setTimeout(() => {
-                        repetitionCount--;
-                        playNext();
-                    }, item.duration);
                 }
             }
+
+            // Mikrofonu başlatma
+            startMicrophone();
         });
     </script>
 </body>
