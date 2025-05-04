@@ -3,25 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kuş Seslendirme Uygulaması</title>
+    <title>Kuş Ses Tetikleme Uygulaması</title>
     <style>
-        /* Stil kısmı */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-top: 30px;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .section {
+            margin: 20px 0;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+        }
+        #audio-status, #player-status {
+            margin-top: 10px;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px;
+            border-radius: 6px;
+        }
+        #audio-status {
+            background-color: #dff9fb;
+            color: #0984e3;
+        }
+        #player-status {
+            background-color: #ffeaa7;
+            color: #2d3436;
+        }
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                padding: 15px;
+            }
+            h1 {
+                font-size: 20px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Kuş Seslendirme Uygulaması</h1>
-        
-        <div class="record-section">
-            <h2>Ses Dosyası Seç</h2>
+        <h1>Kuş Sesi Tetikleme</h1>
+
+        <div class="section">
+            <label for="audio-file"><strong>Ses Dosyası Seç:</strong></label>
             <input type="file" id="audio-file" accept="audio/*">
-            <span id="audio-status"></span>
+            <div id="audio-status">Henüz dosya yüklenmedi.</div>
         </div>
-        
-        <div class="playlist-section">
-            <h2>Çalma Listesi</h2>
-            <div id="playlist"></div>
-            <div id="player-status" class="status">Hazır</div>
+
+        <div class="section">
+            <div id="player-status">Hazır - Ses bekleniyor...</div>
         </div>
     </div>
 
@@ -37,7 +84,6 @@
             let audioStatus = document.getElementById('audio-status');
             let playerStatus = document.getElementById('player-status');
 
-            // Ses dosyasını yükle
             audioFileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('audio/')) {
@@ -45,11 +91,10 @@
                     audio.src = audioFile;
                     audioStatus.textContent = `Dosya yüklendi: ${file.name}`;
                 } else {
-                    audioStatus.textContent = 'Geçersiz dosya türü!';
+                    audioStatus.textContent = 'Lütfen geçerli bir ses dosyası seçin.';
                 }
             });
 
-            // Mikrofonu başlat
             function startMicrophone() {
                 navigator.mediaDevices.getUserMedia({ audio: true })
                     .then((stream) => {
@@ -62,43 +107,38 @@
                         detectSound(dataArray);
                     })
                     .catch((error) => {
-                        console.error('Mikrofon hatası: ', error);
+                        console.error('Mikrofon hatası:', error);
+                        playerStatus.textContent = 'Mikrofon erişimi reddedildi!';
                     });
             }
 
-            // Ses seviyesi algılama
             function detectSound(dataArray) {
                 analyser.getByteFrequencyData(dataArray);
-
-                // Eşik değerini kontrol et (örneğin, 100)
-                let totalVolume = 0;
+                let total = 0;
                 for (let i = 0; i < dataArray.length; i++) {
-                    totalVolume += dataArray[i];
+                    total += dataArray[i];
                 }
-                let averageVolume = totalVolume / dataArray.length;
+                let average = total / dataArray.length;
 
-                if (averageVolume > 100 && !isPlaying) { // Ses eşik değeri
+                if (average > 50 && !isPlaying && audioFile) {
                     playSound();
                 }
 
-                // Ses seviyesini her 100ms'de bir kontrol et
                 requestAnimationFrame(() => detectSound(dataArray));
             }
 
-            // Ses dosyasını çalma
             function playSound() {
-                if (audioFile && !isPlaying) {
-                    isPlaying = true;
-                    playerStatus.textContent = 'Çalıyor...';
-                    audio.play();
-                    audio.onended = () => {
-                        isPlaying = false;
-                        playerStatus.textContent = 'Hazır';
-                    };
-                }
+                isPlaying = true;
+                audio.currentTime = 0;
+                audio.play();
+                playerStatus.textContent = 'Ses çalıyor...';
+
+                audio.onended = () => {
+                    isPlaying = false;
+                    playerStatus.textContent = 'Hazır - Ses bekleniyor...';
+                };
             }
 
-            // Mikrofonu başlatma
             startMicrophone();
         });
     </script>
