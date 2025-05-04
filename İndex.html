@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuş Seslendirme Uygulaması</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        button.record {
+            background-color: #e74c3c;
+        }
+        button.record:hover {
+            background-color: #c0392b;
+        }
+        button.play {
+            background-color: #2ecc71;
+        }
+        button.play:hover {
+            background-color: #27ae60;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.playing {
+            background-color: #d5f5e3;
+            color: #27ae60;
+        }
+        .status.stopped {
+            background-color: #fadbd8;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Kuş Seslendirme Uygulaması</h1>
+        
+        <div class="controls">
+            <button id="start-listening">Dinlemeyi Başlat</button>
+            <button id="stop-listening" disabled>Durdur</button>
+            <div id="player-status" class="status stopped">Hazır</div>
+        </div>
+        
+        <input type="file" id="audio-file" accept="audio/*">
+        <div id="audio-status">Ses dosyasını seçin</div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Değişkenler
+            let audioFile = null;
+            let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            let analyser = audioContext.createAnalyser();
+            let microphoneStream = null;
+            let mediaStreamSource = null;
+            let isListening = false;
+            let isPlaying = false;
+            let audioElement = new Audio();
+
+            const startListeningButton = document.getElementById('start-listening');
+            const stopListeningButton = document.getElementById('stop-listening');
+            const audioFileInput = document.getElementById('audio-file');
+            const audioStatus = document.getElementById('audio-status');
+            const playerStatus = document.getElementById('player-status');
+
+            // Ses dosyasını yükle
+            audioFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    audioElement.src = url;
+                    audioStatus.textContent = `Seçilen dosya: ${file.name}`;
+                    audioFile = file;
+                }
+            });
+
+            // Dinlemeyi başlat
+            startListeningButton.addEventListener('click', () => {
+                if (audioFile && !isListening) {
+                    startListening();
+                }
+            });
+
+            // Dinlemeyi durdur
+            stopListeningButton.addEventListener('click', () => {
+                stopListening();
+            });
+
+            // Mikrofonu başlat
+            async function startListening() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    microphoneStream = stream;
+                    mediaStreamSource = audioContext.createMediaStreamSource(stream);
+                    mediaStreamSource.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                    analyser.fftSize = 256;
+
+                    // Dinleme aktifleşti
+                    isListening = true;
+                    startListeningButton.disabled = true;
+                    stopListeningButton.disabled = false;
+                    playerStatus.textContent = 'Dinleniyor...';
+                    playerStatus.className = 'status playing';
+
+                    listenForSound();
+                } catch (err) {
+                    console.error('Mikrofon hatası:', err);
+                    alert('Mikrofon erişimi hatası');
+                }
+            }
+
+            // Dinlemeyi durdur
+            function stopListening() {
+                if (microphoneStream) {
+                    microphoneStream.getTracks().forEach(track => track.stop());
+                }
+                isListening = false;
+                startListeningButton.disabled = false;
+                stopListeningButton.disabled = true;
+                playerStatus.textContent = 'Hazır';
+                playerStatus.className = 'status stopped';
+            }
+
+            // Ses seviyesini kontrol et
+            function listenForSound() {
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function checkSound() {
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    dataArray.forEach(value => sum += value);
+                    const average = sum / bufferLength;
+
+                    // Eğer ses seviyesi eşik değeri geçerse, ses dosyasını çal
+                    if (average > 50 && !isPlaying) {
+                        playAudio();
+                    }
+
+                    if (isListening) {
+                        requestAnimationFrame(checkSound);
+                    }
+                }
+
+                checkSound();
+            }
+
+            // Ses dosyasını çal
+            function playAudio() {
+                isPlaying = true;
+                audioElement.play();
+                audioElement.onended = () => {
+                    isPlaying = false;
+                };
+            }
+        });
+    </script>
+</body>
+</html>
