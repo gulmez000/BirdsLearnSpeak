@@ -101,7 +101,7 @@
         const maxVolume = Math.max(...dataArray);
         volumeDiv.textContent = `Ses seviyesi: ${maxVolume}`;
 
-        if (maxVolume > 40 && !isPlaying) {
+        if (maxVolume > 100 && !isPlaying) {
           playSound();
         }
 
