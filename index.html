@@ -1,146 +1,111 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kuş Ses Tetikleme Uygulaması</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Kuş Sesi Tetikleme</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 0;
-            padding: 0;
+            font-family: sans-serif;
+            padding: 20px;
+            background: #ecf0f1;
         }
         .container {
+            background: #fff;
             max-width: 600px;
             margin: auto;
-            background: white;
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-top: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         h1 {
             text-align: center;
-            color: #2c3e50;
-        }
-        .section {
-            margin: 20px 0;
         }
         input[type="file"] {
             width: 100%;
             padding: 10px;
         }
-        #audio-status, #player-status {
-            margin-top: 10px;
-            font-weight: bold;
-            text-align: center;
+        .status {
+            margin-top: 15px;
             padding: 10px;
+            text-align: center;
             border-radius: 6px;
-        }
-        #audio-status {
             background-color: #dff9fb;
             color: #0984e3;
-        }
-        #player-status {
-            background-color: #ffeaa7;
-            color: #2d3436;
-        }
-        @media (max-width: 600px) {
-            .container {
-                margin: 10px;
-                padding: 15px;
-            }
-            h1 {
-                font-size: 20px;
-            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Kuş Sesi Tetikleme</h1>
-
-        <div class="section">
-            <label for="audio-file"><strong>Ses Dosyası Seç:</strong></label>
-            <input type="file" id="audio-file" accept="audio/*">
-            <div id="audio-status">Henüz dosya yüklenmedi.</div>
-        </div>
-
-        <div class="section">
-            <div id="player-status">Hazır - Ses bekleniyor...</div>
-        </div>
+        <input type="file" id="audio-file" accept="audio/*" />
+        <div class="status" id="status">Dosya bekleniyor...</div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            let audioFile = null;
-            let audio = new Audio();
-            let isPlaying = false;
-            let audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            let analyser = audioContext.createAnalyser();
-            let microphoneStream = null;
-            let audioFileInput = document.getElementById('audio-file');
-            let audioStatus = document.getElementById('audio-status');
-            let playerStatus = document.getElementById('player-status');
+        const audioInput = document.getElementById('audio-file');
+        const statusDiv = document.getElementById('status');
 
-            audioFileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file && file.type.startsWith('audio/')) {
-                    audioFile = URL.createObjectURL(file);
-                    audio.src = audioFile;
-                    audioStatus.textContent = `Dosya yüklendi: ${file.name}`;
-                } else {
-                    audioStatus.textContent = 'Lütfen geçerli bir ses dosyası seçin.';
-                }
-            });
+        let audioContext, analyser, microphoneStream;
+        let audio = new Audio();
+        let isPlaying = false;
 
-            function startMicrophone() {
-                navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then((stream) => {
-                        microphoneStream = stream;
-                        let source = audioContext.createMediaStreamSource(stream);
-                        source.connect(analyser);
-                        analyser.fftSize = 256;
-                        let bufferLength = analyser.frequencyBinCount;
-                        let dataArray = new Uint8Array(bufferLength);
-                        detectSound(dataArray);
-                    })
-                    .catch((error) => {
-                        console.error('Mikrofon hatası:', error);
-                        playerStatus.textContent = 'Mikrofon erişimi reddedildi!';
-                    });
+        audioInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                audio.src = URL.createObjectURL(file);
+                statusDiv.textContent = "Ses dosyası yüklendi.";
+                await startMicrophone();
             }
+        });
 
-            function detectSound(dataArray) {
+        async function startMicrophone() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                await audioContext.resume(); // iOS için kritik
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphoneStream = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                microphoneStream.connect(analyser);
+                detectSound();
+                statusDiv.textContent = "Dinleniyor... Kuş sesi bekleniyor.";
+            } catch (err) {
+                statusDiv.textContent = "Mikrofon erişimi reddedildi.";
+                console.error(err);
+            }
+        }
+
+        function detectSound() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            const check = () => {
                 analyser.getByteFrequencyData(dataArray);
-                let total = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                    total += dataArray[i];
-                }
-                let average = total / dataArray.length;
-
-                if (average > 50 && !isPlaying && audioFile) {
+                const maxVolume = Math.max(...dataArray);
+                
+                // Eşik seviyesini düşürerek daha hassas hale getiriyoruz
+                if (maxVolume > 40 && !isPlaying) {
                     playSound();
                 }
 
-                requestAnimationFrame(() => detectSound(dataArray));
-            }
+                requestAnimationFrame(check);
+            };
 
-            function playSound() {
-                isPlaying = true;
-                audio.currentTime = 0;
-                audio.play();
-                playerStatus.textContent = 'Ses çalıyor...';
+            check();
+        }
 
-                audio.onended = () => {
-                    isPlaying = false;
-                    playerStatus.textContent = 'Hazır - Ses bekleniyor...';
-                };
-            }
-
-            startMicrophone();
-        });
+        function playSound() {
+            if (!audio.src) return;
+            isPlaying = true;
+            audio.currentTime = 0;
+            audio.play();
+            statusDiv.textContent = "Kuş sesi algılandı! Ses çalıyor...";
+            audio.onended = () => {
+                isPlaying = false;
+                statusDiv.textContent = "Dinleniyor... Kuş sesi bekleniyor.";
+            };
+        }
     </script>
 </body>
 </html>
