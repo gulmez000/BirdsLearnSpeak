@@ -22,6 +22,12 @@
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        .record-section, .playlist-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
         button {
             background-color: #3498db;
             color: white;
@@ -51,12 +57,50 @@
         button.play:hover {
             background-color: #27ae60;
         }
+        .audio-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        input[type="number"] {
+            width: 60px;
+            padding: 5px;
+            margin: 0 5px;
+        }
         .status {
             margin-top: 20px;
             padding: 10px;
             border-radius: 5px;
             text-align: center;
             font-weight: bold;
+        }
+        .audio-label {
+            width: 100px;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        .sequence-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        #playlist {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px dashed #ccc;
+            border-radius: 5px;
+        }
+        .delete-btn {
+            background-color: #e74c3c;
+            margin-left: 10px;
         }
         .status.playing {
             background-color: #d5f5e3;
@@ -72,124 +116,149 @@
     <div class="container">
         <h1>Kuş Seslendirme Uygulaması</h1>
         
-        <div class="controls">
-            <button id="start-listening">Dinlemeyi Başlat</button>
-            <button id="stop-listening" disabled>Durdur</button>
-            <div id="player-status" class="status stopped">Hazır</div>
+        <div class="record-section">
+            <h2>Ses Dosyası Seç</h2>
+            <div class="controls">
+                <input type="file" id="audio-file" accept="audio/*">
+                <span id="audio-status"></span>
+            </div>
         </div>
         
-        <input type="file" id="audio-file" accept="audio/*">
-        <div id="audio-status">Ses dosyasını seçin</div>
+        <div class="playlist-section">
+            <h2>Çalma Listesi</h2>
+            <div id="playlist-controls">
+                <div class="sequence-item">
+                    <input type="number" id="duration" min="1" max="60" value="5" placeholder="Dk">
+                    <span>dakika</span>
+                    <button id="add-to-playlist">Listeye Ekle</button>
+                </div>
+                <div class="sequence-item">
+                    <span>Sessiz süre: </span>
+                    <input type="number" id="silence-duration" min="0" max="120" value="30" placeholder="Dk">
+                    <span>dakika</span>
+                    <button id="add-silence">Sessizlik Ekle</button>
+                </div>
+                <div class="sequence-item">
+                    <span>Toplam tekrar sayısı: </span>
+                    <input type="number" id="repeat-count" min="1" max="100" value="7">
+                    <button id="start-sequence" class="play">Çalmayı Başlat</button>
+                    <button id="stop-sequence">Durdur</button>
+                </div>
+            </div>
+            
+            <h3>Çalma Sırası:</h3>
+            <div id="playlist"></div>
+            
+            <div id="player-status" class="status stopped">Hazır</div>
+        </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Değişkenler
             let audioFile = null;
-            let audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            let analyser = audioContext.createAnalyser();
-            let microphoneStream = null;
-            let mediaStreamSource = null;
-            let isListening = false;
+            let playlist = [];
             let isPlaying = false;
-            let audioElement = new Audio();
+            let currentAudioIndex = 0;
+            let repetitionCount = 0;
+            let currentAudio = null;
+            let silenceTimeout = null;
 
-            const startListeningButton = document.getElementById('start-listening');
-            const stopListeningButton = document.getElementById('stop-listening');
             const audioFileInput = document.getElementById('audio-file');
-            const audioStatus = document.getElementById('audio-status');
+            const addToPlaylistButton = document.getElementById('add-to-playlist');
+            const addSilenceButton = document.getElementById('add-silence');
+            const startSequenceButton = document.getElementById('start-sequence');
+            const stopSequenceButton = document.getElementById('stop-sequence');
+            const playlistContainer = document.getElementById('playlist');
             const playerStatus = document.getElementById('player-status');
+            const durationInput = document.getElementById('duration');
+            const silenceDurationInput = document.getElementById('silence-duration');
+            const repeatCountInput = document.getElementById('repeat-count');
+            const audioStatus = document.getElementById('audio-status');
 
             // Ses dosyasını yükle
             audioFileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    const url = URL.createObjectURL(file);
-                    audioElement.src = url;
-                    audioStatus.textContent = `Seçilen dosya: ${file.name}`;
-                    audioFile = file;
+                if (file && file.type.startsWith('audio/')) {
+                    audioFile = URL.createObjectURL(file);
+                    audioStatus.textContent = `Dosya yüklendi: ${file.name}`;
+                } else {
+                    audioStatus.textContent = 'Geçersiz dosya türü!';
                 }
             });
 
-            // Dinlemeyi başlat
-            startListeningButton.addEventListener('click', () => {
-                if (audioFile && !isListening) {
-                    startListening();
+            // Çalma listesine ses dosyasını ekle
+            addToPlaylistButton.addEventListener('click', () => {
+                if (audioFile) {
+                    const duration = parseInt(durationInput.value) * 60 * 1000; // Dakika -> ms
+                    playlist.push({
+                        type: 'sound',
+                        audio: new Audio(audioFile),
+                        duration: duration
+                    });
+                    updatePlaylist();
                 }
             });
 
-            // Dinlemeyi durdur
-            stopListeningButton.addEventListener('click', () => {
-                stopListening();
+            // Sessizlik ekle
+            addSilenceButton.addEventListener('click', () => {
+                const silenceDuration = parseInt(silenceDurationInput.value) * 60 * 1000; // Dakika -> ms
+                playlist.push({
+                    type: 'silence',
+                    duration: silenceDuration
+                });
+                updatePlaylist();
             });
 
-            // Mikrofonu başlat
-            async function startListening() {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    microphoneStream = stream;
-                    mediaStreamSource = audioContext.createMediaStreamSource(stream);
-                    mediaStreamSource.connect(analyser);
-                    analyser.connect(audioContext.destination);
-                    analyser.fftSize = 256;
-
-                    // Dinleme aktifleşti
-                    isListening = true;
-                    startListeningButton.disabled = true;
-                    stopListeningButton.disabled = false;
-                    playerStatus.textContent = 'Dinleniyor...';
-                    playerStatus.className = 'status playing';
-
-                    listenForSound();
-                } catch (err) {
-                    console.error('Mikrofon hatası:', err);
-                    alert('Mikrofon erişimi hatası');
-                }
+            // Çalma sırasını güncelle
+            function updatePlaylist() {
+                playlistContainer.innerHTML = '';
+                playlist.forEach((item, index) => {
+                    const div = document.createElement('div');
+                    div.textContent = item.type === 'sound' ? `Ses: ${item.audio.src}` : `Sessizlik: ${item.duration / 60000} dk`;
+                    playlistContainer.appendChild(div);
+                });
             }
 
-            // Dinlemeyi durdur
-            function stopListening() {
-                if (microphoneStream) {
-                    microphoneStream.getTracks().forEach(track => track.stop());
-                }
-                isListening = false;
-                startListeningButton.disabled = false;
-                stopListeningButton.disabled = true;
-                playerStatus.textContent = 'Hazır';
-                playerStatus.className = 'status stopped';
-            }
-
-            // Ses seviyesini kontrol et
-            function listenForSound() {
-                const bufferLength = analyser.frequencyBinCount;
-                const dataArray = new Uint8Array(bufferLength);
-
-                function checkSound() {
-                    analyser.getByteFrequencyData(dataArray);
-                    let sum = 0;
-                    dataArray.forEach(value => sum += value);
-                    const average = sum / bufferLength;
-
-                    // Eğer ses seviyesi eşik değeri geçerse, ses dosyasını çal
-                    if (average > 50 && !isPlaying) {
-                        playAudio();
-                    }
-
-                    if (isListening) {
-                        requestAnimationFrame(checkSound);
-                    }
-                }
-
-                checkSound();
-            }
-
-            // Ses dosyasını çal
-            function playAudio() {
+            // Çalmayı başlat
+            startSequenceButton.addEventListener('click', () => {
+                if (isPlaying) return;
                 isPlaying = true;
-                audioElement.play();
-                audioElement.onended = () => {
-                    isPlaying = false;
-                };
+                repetitionCount = parseInt(repeatCountInput.value);
+                playNext();
+            });
+
+            // Çalmayı durdur
+            stopSequenceButton.addEventListener('click', () => {
+                isPlaying = false;
+                playerStatus.textContent = 'Hazır';
+            });
+
+            // Ses çalma ve sessiz geçiş
+            function playNext() {
+                if (currentAudioIndex >= playlist.length || repetitionCount <= 0) {
+                    playerStatus.textContent = 'Çalma bitti';
+                    return;
+                }
+
+                const item = playlist[currentAudioIndex];
+                currentAudioIndex++;
+
+                if (item.type === 'sound') {
+                    playerStatus.textContent = 'Çalıyor...';
+                    item.audio.play();
+                    item.audio.onended = () => {
+                        setTimeout(() => {
+                            repetitionCount--;
+                            playNext();
+                        }, item.duration);
+                    };
+                } else if (item.type === 'silence') {
+                    playerStatus.textContent = 'Sessizlik...';
+                    setTimeout(() => {
+                        repetitionCount--;
+                        playNext();
+                    }, item.duration);
+                }
             }
         });
     </script>
